@@ -1,0 +1,83 @@
+<project name="CurrencyConverter" default="main" basedir=".">
+  <description>Currency Converter</description>
+  <property name="src"            location="${basedir}/src/" />
+  <property name="bin"            location="bin" />
+  <property name="lib"            location="lib" />
+
+  <path id="classpath">
+    <fileset dir="${lib}">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+
+  <macrodef name="git-sha">
+    <sequential>
+      <exec executable="git" outputproperty="GIT_SHA1" failonerror="false" failifexecutionfails="false">
+        <arg value = "rev-parse" />
+        <arg value = "HEAD" />
+      </exec>
+        <exec executable="git" outputproperty="GIT_BRANCH" failonerror="false" failifexecutionfails="false">
+          <arg value = "rev-parse" />
+          <arg value = "--abbrev-ref" />
+          <arg value = "HEAD" />
+        </exec>
+    </sequential>
+  </macrodef>
+
+  <target name="main" depends="jar" />
+
+  <target name="build"     depends="clean,jar" />
+
+  <target name="init">
+      <git-sha />
+  </target>
+
+  <target name="info" depends="init">
+      <echoproperties />
+  </target>
+
+  <target name="compile" depends="info">
+    <mkdir dir="${bin}" />
+
+    <javac srcdir="${src}" destdir="${bin}" includeantruntime="false" classpathref="classpath" debug="true" debuglevel="lines,vars,source">
+      <exclude name="dist/**" />
+      <exclude name="lib/**" />
+      <exclude name="**/.git" />
+      <exclude name="**/.git/**" />
+    </javac>
+  </target>
+
+  <target name="jar" depends="compile">
+
+    <!-- get rid of the jar file we currently have -->
+    <delete file="${lib}/CurrencyConverter.jar" />
+
+    <!-- date/time -->
+    <tstamp>
+      <format property="TODAY" pattern="yyyy-MM-dd HH:mm:ss" />
+    </tstamp>
+
+    <manifestclasspath property="built.with.classpath" jarfile="${lib}/CurrencyConverter.jar">
+      <classpath refid="classpath" />
+    </manifestclasspath>
+
+    <jar jarfile="${lib}/CurrencyConverter.jar">
+      <!-- define MANIFEST.MF -->
+      <manifest>
+        <attribute name="Built-By" value="${user.name}" />
+        <attribute name="Built-Date" value="${TODAY}" />
+        <attribute name="Git-SHA1" value="${GIT_SHA1}" />
+        <attribute name="Git-branch" value="${GIT_BRANCH}" />
+        <attribute name="Built-With-Classpath" value="${built.with.classpath}" />
+      </manifest>
+      <fileset dir="${bin}">
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="clean">
+    <delete dir="${bin}" />
+    <delete dir="${build}" />
+    <delete file="${lib}/CurrencyConverter.jar" />
+  </target>
+</project>
