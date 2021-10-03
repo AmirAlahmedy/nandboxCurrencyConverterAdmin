@@ -53,9 +53,15 @@ public class Constant {
 			+ "\n -  if you want to know what is your currency code please enter '/info'"
 			+ "\n - you can also see some example for how to you use it by entering /example";
 	
-	public static final String HELP = " Please make sure of your currency code\r\n"
-			+ "- if you want to know what is your currency code please enter '/info'\r\n"
-			+ "- you can also see some example for how to you use it by enter /example\r\n";
+	public static final String HELP = "Please make sure of your currency code.\r\n"
+			+ "If you want to know what is your currency code please enter '/info',\r\n"
+			+ "you can also see some example for how to you use it by enter '/example'.\r\n"
+			+ "\r\n"
+			+ "Before scheduling setup your time zone through the following command:\r\n"
+			+ "/setup_timezone Offset\r\n"
+			+ "Sets up your time zone by setting the offset from the UTC/GMT. For example: '/setup_timezone -05:00' if your time zone is UTC/GMT -5\r\n"
+			+ "or '/setup_timezone +02:00' if your time zone is UTC/GMT +2. In case your time zone is UTC/GMT just type: '/setup_timezone +0:00'\r\n"
+			+ "";
 	
 	public static String getTokenFromPropFile() throws IOException {
 		Properties prop = new Properties();

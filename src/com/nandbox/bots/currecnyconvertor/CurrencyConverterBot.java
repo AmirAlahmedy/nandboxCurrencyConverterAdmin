@@ -8,6 +8,7 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 
 import com.nandbox.bots.api.Nandbox;
@@ -24,12 +25,39 @@ import com.nandbox.bots.api.inmessages.InlineSearch;
 import com.nandbox.bots.api.inmessages.MessageAck;
 import com.nandbox.bots.api.inmessages.PermanentUrl;
 import com.nandbox.bots.api.inmessages.WhiteList;
+import com.nandbox.bots.api.outmessages.OutMessage;
 import com.nandbox.bots.api.outmessages.TextOutMessage;
 import com.nandbox.bots.api.util.Utils;
 import com.nandbox.bots.control.CurrencyConverter;
 import com.nandbox.bots.currecnyconvertor.Constant;
 
+
 import net.minidev.json.JSONObject;
+
+
+class TimeZoneOffset{
+	private int hour;
+	private int minute;
+	private char operator;
+	public int getHour() {
+		return hour;
+	}
+	public void setHour(int hour) {
+		this.hour = hour;
+	}
+	public int getMinute() {
+		return minute;
+	}
+	public void setMinute(int minute) {
+		this.minute = minute;
+	}
+	public char getOperator() {
+		return operator;
+	}
+	public void setOperator(char operator) {
+		this.operator = operator;
+	}
+}
 
 class Helper
 {
@@ -67,6 +95,26 @@ class Helper
 			return true;
 		}
 		return false;
+	}
+	
+	public boolean isSetupTimeZoneCommand(String messageText) {
+		return Pattern.compile("/setup_timezone\\s+((\\+[0-1][0-4]?|\\-[0-1][0-4]?):([0-5][0-9]))").matcher(messageText).matches();
+	}
+	
+	public OutMessage setMessageBasics(OutMessage message,String chatId,Long scheduledTime,Integer chatSettings,String toUserId) {
+		
+		message.setChatId(chatId);
+		long reference = Utils.getUniqueId();
+		message.setReference(reference);
+		if(scheduledTime != null) {
+			message.setScheduleDate(scheduledTime);
+		}
+		if(chatSettings != null &&chatSettings == 1) 
+		{
+			message.setChatSettings(1);
+			message.setToUserId(toUserId);
+		}
+		return message;
 	}
 	
 
@@ -192,6 +240,32 @@ class MyRunnable implements Runnable
 	}
 }
 public class CurrencyConverterBot {
+	
+	private static long getDeltaFromDB(String chatId, Database db) throws SQLException {
+		return computeDelta(db.getTimeZoneFromDB(chatId));
+	}
+	
+	private static long computeDelta(TimeZoneOffset offset) {
+		int timeZoneHr = offset.getHour();
+		int timeZoneMn = offset.getMinute();
+		char operator = offset.getOperator();
+		
+		System.out.println("tzHr: " + timeZoneHr + " tzMn: " + timeZoneMn);
+		
+		System.out.println("Daylight Savings: " + TimeZone.getDefault().getDSTSavings());
+		
+		long currentTimeZoneOffsetInMs =  TimeZone.getDefault().getOffset(0) + TimeZone.getDefault().getDSTSavings();
+		
+		System.out.println("currentTimeZoneOffsetInMs: " + currentTimeZoneOffsetInMs);
+		
+		long delta = 0; // Difference between the time zone offset of the server and the client.
+		if(operator == '+')
+			delta = timeZoneHr*60*60*1000 + timeZoneMn*60*1000 - currentTimeZoneOffsetInMs;
+		else if(operator == '-')
+			delta = -(timeZoneHr*60*60*1000 + timeZoneMn*60*1000) - currentTimeZoneOffsetInMs;
+		
+		return delta;
+	}
 
 	public static void main(String[] args) throws Exception {
 		
@@ -207,6 +281,7 @@ public class CurrencyConverterBot {
 			public void onConnect(Nandbox.Api api) {
 				try {
 					db.createTable();
+					db.createTimeZoneTable();
 				} catch (SQLException e) {
 					e.printStackTrace();
 				}
@@ -288,7 +363,14 @@ public class CurrencyConverterBot {
 							Date scheduledDate;
 							try {
 								scheduledDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateTime);
-								scheduledTime = scheduledDate.getTime();
+								
+								TimeZoneOffset offset = db.getTimeZoneFromDB(chatId);
+
+								long delta = computeDelta(offset);
+								
+								System.out.println("delta: " + delta);
+								
+								scheduledTime = scheduledDate.getTime() - delta;
 							} catch (ParseException e) {
 								TextOutMessage error = new TextOutMessage();
 								error.setText("Please make sure you entered the time in the following format 'yyyy-MM-dd HH:mm:ss'");
@@ -299,6 +381,8 @@ public class CurrencyConverterBot {
 								error.setToUserId(incomingMsg.getFrom().getId());
 								api.send(error);
 								return;
+							} catch (SQLException e) {
+								e.printStackTrace();
 							}
 							
 							long currentEpoch = Instant.now().toEpochMilli();
@@ -372,7 +456,14 @@ public class CurrencyConverterBot {
 							long scheduledTime = 0;
 							try {
 								scheduledDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateTime);
-								scheduledTime = scheduledDate.getTime();
+
+								TimeZoneOffset offset = db.getTimeZoneFromDB(chatId);
+
+								long delta = computeDelta(offset);
+								
+								System.out.println("delta: " + delta);
+								
+								scheduledTime = scheduledDate.getTime() - delta;
 							} catch (ParseException e) {
 								TextOutMessage error = new TextOutMessage();
 								error.setText("Please make sure you entered the date in the following format 'yyyy-MM-dd HH:mm:ss'");
@@ -383,6 +474,8 @@ public class CurrencyConverterBot {
 								error.setToUserId(incomingMsg.getFrom().getId());
 								api.send(error);
 								return;
+							} catch (SQLException e) {
+								e.printStackTrace();
 							}
 							
 							
@@ -512,6 +605,46 @@ public class CurrencyConverterBot {
 							confirmation.setChatSettings(1);
 							confirmation.setToUserId(incomingMsg.getFrom().getId());
 							api.send(confirmation);
+						}
+						else if(help.isSetupTimeZoneCommand(reciveMessage)) {
+							String[] messageSplit = reciveMessage.split(" ", 2);
+							String timeZoneOffset = messageSplit[1];
+							
+							String[] timeZoneSplit = timeZoneOffset.split(":", 2);
+							String hoursOffset = timeZoneSplit[0];
+							String minutesOffset = timeZoneSplit[1];
+							
+							
+							char timeZoneOperator = hoursOffset.charAt(0);
+							hoursOffset = hoursOffset.substring(1);
+							
+							int timeZoneHoursOffset = Integer.parseInt(hoursOffset);
+							int timeZoneminutesOffset = Integer.parseInt(minutesOffset);
+							
+							System.out.println("Time Zone Offset: " + timeZoneHoursOffset + ":" + timeZoneminutesOffset);
+							
+							try {
+								if(db.chatIdExistsInTimeZoneTable(chatId)) {
+									db.updateTimeZoneForSpecificChatId(chatId, timeZoneHoursOffset, timeZoneminutesOffset, timeZoneOperator);
+									
+									TextOutMessage confirmationMessage = new TextOutMessage();
+									confirmationMessage.setText("Time zone updated successfully!");
+									
+									confirmationMessage = (TextOutMessage) help.setMessageBasics(confirmationMessage, chatId, null,incomingMsg.getChatSettings(),incomingMsg.getFrom().getId());
+									api.send(confirmationMessage);
+								} else {
+									db.insertTimeZone(chatId, timeZoneHoursOffset, timeZoneminutesOffset, timeZoneOperator);
+									
+									TextOutMessage confirmationMessage = new TextOutMessage();
+									confirmationMessage.setText("Time zone saved successfully!");
+									
+									confirmationMessage = (TextOutMessage) help.setMessageBasics(confirmationMessage, chatId, null,incomingMsg.getChatSettings(),incomingMsg.getFrom().getId());
+									api.send(confirmationMessage);
+								}
+							} catch (SQLException e) {
+								e.printStackTrace();
+							}
+							
 						}
 					}
 				}
